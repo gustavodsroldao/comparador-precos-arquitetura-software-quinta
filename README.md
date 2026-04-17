@@ -86,9 +86,13 @@ comparador/
     │   ├── schema.sql
     │   └── repository.py
     ├── web/                     # dashboard FastAPI + Jinja + Chart.js
-    │   ├── app.py
+    │   ├── app.py               # rotas /public/* e /admin/*
+    │   ├── auth.py              # login hardcoded + session guard
     │   ├── templates/
-    │   └── static/
+    │   │   ├── base.html
+    │   │   ├── public/{index,product}.html
+    │   │   └── admin/{login,index,product}.html
+    │   └── static/app.css
     └── cli/
         ├── track_cmd.py
         └── serve_cmd.py
@@ -132,22 +136,47 @@ Um Product tem N Listings. Histórico é **por Listing**; comparação entre loj
 Cada Listing encontrado recebe um `match_score` (0–100) do matcher semântico:
 
 - **≥ 85** → `auto` (linkado automaticamente ao Product)
-- **55–85** → `pending` (aparece no dashboard pra você confirmar/rejeitar)
+- **55–85** → `pending` (aparece só no admin pra você confirmar/rejeitar)
 - **< 55** → descartado (não é persistido)
 
-No dashboard, em cada product detail, listings `pending` mostram botões
-Confirmar/Rejeitar. Confirmados entram no cálculo de menor preço e no gráfico;
-rejeitados ficam ocultos.
+Ciclo de vida completo de um listing (admin gerencia via dashboard):
+
+| Estado atual | Ações disponíveis          | Vai para    |
+|-------------|---------------------------|-------------|
+| `pending`   | Confirmar / Rejeitar      | `confirmed` / `rejected` |
+| `auto`      | Parar de observar         | `rejected`  |
+| `confirmed` | Parar de observar         | `rejected`  |
+| `rejected`  | Reativar                  | `confirmed` |
+
+"Parar de observar" preserva o histórico de preços do listing — só marca como
+`rejected`, sumindo dos cálculos e do público. Reativar traz de volta.
 
 ## Dashboard
 
-- **`/`** — tabela de todos os produtos com menor preço atual e loja vencedora.
-- **`/product/{id}`** — detalhe:
-  - Cards por listing (uma loja por card) com preço atual, preço "de", vendedor,
-    match score, link status e botões de confirmar/rejeitar pendentes.
-  - Gráfico de linha com histórico de preços, uma série por listing.
+Dividido em duas áreas:
 
-Gráfico usa Chart.js + adaptador Luxon (via CDN, sem build step).
+### Pública (sem login) — `/public/`
+
+- **`/public/`** — grid de produtos com **foto** + nome + menor preço atual.
+- **`/public/product/{id}`** — página de comparação: cada loja em uma linha
+  com foto, título, vendedor, preço — **ordenadas do menor para o maior preço**.
+  Clicar abre a loja em nova aba.
+
+Mostra só listings em estado `auto` ou `confirmed` com preço disponível.
+
+### Admin (login obrigatório) — `/admin/`
+
+Credenciais hardcoded: **`admin@admin.com`** / **`password`**.
+
+- **`/admin/login`** — formulário de login.
+- **`/admin/`** — tabela completa de todos os produtos.
+- **`/admin/product/{id}`** — detalhe com:
+  - Cards por listing incluindo os em estado `pending` e `rejected`.
+  - Botões de ação contextuais (Confirmar / Rejeitar / Parar de observar / Reativar).
+  - Gráfico de histórico de preços (Chart.js + Luxon, via CDN).
+
+Sessão via `SessionMiddleware` do Starlette. Secret configurável via env var
+`COMPARADOR_SECRET` (gerado aleatoriamente se não definido).
 
 ## Storage
 
