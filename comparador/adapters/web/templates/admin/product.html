@@ -1,5 +1,16 @@
-{% extends "base.html" %}
-{% block title %}{{ product.display_name }} — Admin{% endblock %}
+{% extends "base.html" %} {% block title %}{{ product.display_name }} — Admin{% endblock %} 
+
+{% macro img_placeholder(size=48) %}
+<div class="no-photo" style="height: 160px;">
+  <svg width="{{ size }}" height="{{ size }}" viewBox="0 0 48 48" fill="none">
+    <rect width="48" height="48" rx="8" fill="currentColor" fill-opacity="0.08"/>
+    <path d="M14 34V22a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H16a2 2 0 0 1-2-2z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+    <path d="M20 20v-2a4 4 0 0 1 8 0v2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+    <circle cx="24" cy="28" r="2" fill="currentColor"/>
+  </svg>
+</div>
+{% endmacro %}
+
 {% block content %}
 <nav class="breadcrumb"><a href="/admin/">← admin</a></nav>
 <h1>{{ product.display_name }}</h1>
@@ -20,42 +31,56 @@
       <span class="status status-{{ l.link_status }}">{{ l.link_status }}</span>
     </header>
     {% if l.image_url %}
-      <img class="thumb" src="{{ l.image_url }}" alt="" loading="lazy">
+    <img class="thumb" src="{{ l.image_url }}" alt="" loading="lazy" 
+         onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" />
+    {{ img_placeholder(40) }}
+    {% else %}
+    {{ img_placeholder(40) }}
     {% endif %}
-    <h3><a href="{{ l.url }}" target="_blank" rel="noopener">{{ l.title }}</a></h3>
+    <h3>
+      <a href="{{ l.url }}" target="_blank" rel="noopener">{{ l.title }}</a>
+    </h3>
     <div class="price-block">
       {% if l.current_price %}
-        <span class="current">R$ {{ "%.2f"|format(l.current_price) }}</span>
-        {% if l.original_price and l.original_price > l.current_price %}
-          <s class="original">R$ {{ "%.2f"|format(l.original_price) }}</s>
-        {% endif %}
-      {% else %}
-        <span class="unavailable">sem preço</span>
+      <span class="current">R$ {{ "%.2f"|format(l.current_price) }}</span>
+      {% if l.original_price and l.original_price > l.current_price %}
+      <s class="original">R$ {{ "%.2f"|format(l.original_price) }}</s>
+      {% endif %} {% else %}
+      <span class="unavailable">sem preço</span>
       {% endif %}
     </div>
     <dl class="meta">
-      <dt>Match</dt><dd>{{ "%.0f"|format(l.match_score) }}</dd>
-      {% if l.seller %}<dt>Vendedor</dt><dd>{{ l.seller }}</dd>{% endif %}
-      <dt>ID</dt><dd><code>{{ l.site_id }}</code></dd>
-      <dt>Atualizado</dt><dd>{{ l.last_fetched_at[:16].replace('T', ' ') if l.last_fetched_at else "—" }}</dd>
+      <dt>Match</dt>
+      <dd>{{ "%.0f"|format(l.match_score) }}</dd>
+      {% if l.seller %}
+      <dt>Vendedor</dt>
+      <dd>{{ l.seller }}</dd>
+      {% endif %}
+      <dt>ID</dt>
+      <dd><code>{{ l.site_id }}</code></dd>
+      <dt>Atualizado</dt>
+      <dd>
+        {{ l.last_fetched_at[:16].replace('T', ' ') if l.last_fetched_at else
+        "—" }}
+      </dd>
     </dl>
 
     <div class="actions">
       {% if l.link_status == 'pending' %}
-        <form method="post" action="/admin/listing/{{ l.id }}/confirm">
-          <button class="confirm" type="submit">✓ Confirmar</button>
-        </form>
-        <form method="post" action="/admin/listing/{{ l.id }}/reject">
-          <button class="reject" type="submit">✗ Rejeitar</button>
-        </form>
+      <form method="post" action="/admin/listing/{{ l.id }}/confirm">
+        <button class="confirm" type="submit">✓ Confirmar</button>
+      </form>
+      <form method="post" action="/admin/listing/{{ l.id }}/reject">
+        <button class="reject" type="submit">✗ Rejeitar</button>
+      </form>
       {% elif l.link_status in ['auto', 'confirmed'] %}
-        <form method="post" action="/admin/listing/{{ l.id }}/unobserve">
-          <button class="reject" type="submit">Parar de observar</button>
-        </form>
+      <form method="post" action="/admin/listing/{{ l.id }}/unobserve">
+        <button class="reject" type="submit">Parar de observar</button>
+      </form>
       {% elif l.link_status == 'rejected' %}
-        <form method="post" action="/admin/listing/{{ l.id }}/reactivate">
-          <button class="confirm" type="submit">↺ Reativar</button>
-        </form>
+      <form method="post" action="/admin/listing/{{ l.id }}/reactivate">
+        <button class="confirm" type="submit">↺ Reativar</button>
+      </form>
       {% endif %}
     </div>
   </article>
@@ -63,51 +88,124 @@
 </div>
 {% endif %}
 
-<h2>Histórico de preços</h2>
-<div class="chart-wrap"><canvas id="priceChart"></canvas></div>
+<div class="chart-section">
+  <div class="chart-header">
+    <h2>Histórico de preços</h2>
+    <div class="period-filters" id="periodFilters">
+      <button class="period-btn" data-days="7">7d</button>
+      <button class="period-btn" data-days="30">30d</button>
+      <button class="period-btn" data-days="90">90d</button>
+      <button class="period-btn active" data-days="0">Tudo</button>
+    </div>
+  </div>
+  <div class="chart-wrap" id="chartWrap">
+    <canvas id="priceChart"></canvas>
+  </div>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <script src="https://cdn.jsdelivr.net/npm/luxon@3"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1"></script>
+<script type="application/json" id="historyData">
+  {{ history_json | safe }}
+</script>
 <script>
-const series = {{ history_json | safe }};
-const palette = ['#ffe600','#ff9900','#0088ce','#7b68ee','#ff6b6b','#4caf50','#e91e63','#00bcd4'];
-
-if (!series.length) {
-  document.querySelector('.chart-wrap').innerHTML =
-    '<p class="empty">Sem histórico ainda. Rode o crawler mais vezes para acumular pontos.</p>';
-} else {
-  const datasets = series.map((s, i) => ({
-    label: s.label,
-    data: s.data,
-    borderColor: palette[i % palette.length],
-    backgroundColor: palette[i % palette.length] + '33',
-    tension: 0.2,
-    pointRadius: 3,
-  }));
-  new Chart(document.getElementById('priceChart'), {
-    type: 'line',
-    data: { datasets },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      scales: {
-        x: { type: 'time', time: { unit: 'day', tooltipFormat: 'dd/MM HH:mm' } },
-        y: {
-          beginAtZero: false,
-          ticks: { callback: v => 'R$ ' + Number(v).toFixed(2) }
-        },
-      },
-      plugins: {
-        legend: { position: 'bottom' },
-        tooltip: {
-          callbacks: {
-            label: ctx => ctx.dataset.label + ': R$ ' + ctx.parsed.y.toFixed(2)
-          }
+  (function () {
+    // Hide fallback placeholders initially, unless already hidden by onerror
+    document.querySelectorAll('.listing-card .no-photo').forEach(function(el) {
+      var img = el.previousElementSibling;
+      if (img && img.tagName === 'IMG') {
+        if (img.style.display !== 'none') {
+          el.style.display = 'none';
         }
-      },
+      }
+    });
+
+    var rawSeries = JSON.parse(document.getElementById('historyData').textContent);
+    var palette   = ['#6c63ff','#4ecdc4','#fb923c','#fbbf24','#f472b6','#34d399','#60a5fa','#a78bfa'];
+    var chartInstance = null;
+    var activeDays = 0;
+
+    if (!rawSeries.length) {
+      document.getElementById('chartWrap').innerHTML =
+        '<p class="empty">Sem histórico ainda. Rode o crawler mais vezes para acumular pontos.</p>';
+      document.getElementById('periodFilters').style.display = 'none';
+      return;
     }
-  });
-}
+
+    function buildDatasets(days) {
+      var cutoff = days > 0 ? new Date(Date.now() - days * 86400000).toISOString() : null;
+      return rawSeries.map(function(s, i) {
+        var data = cutoff ? s.data.filter(function(pt) { return pt.x >= cutoff; }) : s.data;
+        return {
+          label:           s.label,
+          data:            data,
+          borderColor:     palette[i % palette.length],
+          backgroundColor: palette[i % palette.length] + '20',
+          borderWidth:     2,
+          tension:         0.3,
+          pointRadius:     3,
+          fill:            true,
+        };
+      });
+    }
+
+    function renderChart(days) {
+      var isLight = document.documentElement.getAttribute('data-theme') === 'light';
+      var gridColor  = isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.05)';
+      var tickColor  = '#6b7280';
+      if (chartInstance) chartInstance.destroy();
+      chartInstance = new Chart(document.getElementById('priceChart'), {
+        type: 'line',
+        data: { datasets: buildDatasets(days) },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          scales: {
+            x: {
+              type: 'time',
+              time: { unit: 'day', tooltipFormat: 'dd/MM HH:mm' },
+              grid:  { color: gridColor },
+              ticks: { color: tickColor },
+            },
+            y: {
+              beginAtZero: false,
+              grid: { color: gridColor },
+              ticks: { color: tickColor, callback: function(v) { return 'R$ ' + Number(v).toFixed(2); } }
+            },
+          },
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: { color: isLight ? '#4b5563' : '#9ca3af', usePointStyle: true, padding: 14, font: { size: 11 } }
+            },
+            tooltip: {
+              backgroundColor: isLight ? '#fff' : '#1a1d27',
+              borderColor: 'rgba(108,99,255,0.3)',
+              borderWidth: 1,
+              titleColor: isLight ? '#111827' : '#e8eaf0',
+              bodyColor: '#9ca3af',
+              callbacks: { label: function(ctx) { return ' ' + ctx.dataset.label + ': R$ ' + ctx.parsed.y.toFixed(2); } }
+            }
+          },
+        }
+      });
+    }
+
+    document.getElementById('periodFilters').addEventListener('click', function(e) {
+      var btn = e.target.closest('.period-btn');
+      if (!btn) return;
+      document.querySelectorAll('.period-btn').forEach(function(b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      activeDays = parseInt(btn.dataset.days, 10);
+      renderChart(activeDays);
+    });
+
+    var obs = new MutationObserver(function() { renderChart(activeDays); });
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+    renderChart(0);
+  })();
 </script>
 {% endblock %}

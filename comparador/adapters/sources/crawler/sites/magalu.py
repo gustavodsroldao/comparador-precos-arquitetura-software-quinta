@@ -44,7 +44,8 @@ class MagaluScraper(BaseScraper):
             a = item if item.name == "a" else item.select_one("a[href*='/p/']")
             if not a:
                 continue
-            href = a.get("href", "")
+            href_val = a.get("href") or ""
+            href = str(href_val[0]) if isinstance(href_val, list) else str(href_val)
             if href.startswith("/"):
                 href = self.BASE + href
 
@@ -57,9 +58,8 @@ class MagaluScraper(BaseScraper):
             title_el = item.select_one(
                 "[data-testid='product-title'], h2, h3, [data-testid='title']"
             )
-            title = (title_el.get_text(strip=True) if title_el else "") or a.get(
-                "title", ""
-            )
+            title_val = (title_el.get_text(strip=True) if title_el else "") or a.get("title") or ""
+            title = str(title_val[0]) if isinstance(title_val, list) else str(title_val)
             if not title:
                 continue
 

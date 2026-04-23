@@ -1,9 +1,52 @@
 {% extends "base.html" %}
-{% block title %}{{ product.display_name }}{% endblock %}
+{% block title %}{{ product.display_name }} — PriceWatch{% endblock %}
 {% block content %}
-<nav class="breadcrumb"><a href="/public/">← produtos</a></nav>
-<h1>{{ product.display_name }}</h1>
-<h2>Lojas que vendem — menor preço primeiro</h2>
+
+{% macro img_placeholder(size=48) %}
+<div class="no-photo">
+  <svg width="{{ size }}" height="{{ size }}" viewBox="0 0 48 48" fill="none">
+    <rect width="48" height="48" rx="8" fill="currentColor" fill-opacity="0.08"/>
+    <path d="M14 34V22a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H16a2 2 0 0 1-2-2z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+    <path d="M20 20v-2a4 4 0 0 1 8 0v2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+    <circle cx="24" cy="28" r="2" fill="currentColor"/>
+  </svg>
+</div>
+{% endmacro %}
+
+<nav class="breadcrumb">
+  <a href="/public/">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+    Todos os produtos
+  </a>
+</nav>
+
+{% set best = listings[0] if listings else None %}
+
+<div class="product-hero">
+  <div class="product-hero-img">
+    {% if best and best.image_url %}
+      <img src="{{ best.image_url }}" alt="{{ product.display_name }}" loading="lazy"
+           onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+      {{ img_placeholder(40) }}
+    {% else %}
+      {{ img_placeholder(40) }}
+    {% endif %}
+  </div>
+  <div class="product-hero-info">
+    <h1>{{ product.display_name }}</h1>
+    {% if best %}
+      <div>
+        <span class="price-label">Melhor preço encontrado</span>
+        <div class="price-hero">R$ {{ "%.2f"|format(best.current_price) }}</div>
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+<h2>
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline-block;vertical-align:middle;margin-right:4px;color:var(--accent)"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+  Lojas — menor preço primeiro
+</h2>
 
 {% if not listings %}
 <p class="empty">Nenhuma oferta disponível no momento.</p>
@@ -11,17 +54,20 @@
 <div class="comparison-list">
   {% for l in listings %}
   <a class="comparison-row" href="{{ l.url }}" target="_blank" rel="noopener">
+    {% if loop.first %}<span class="best-badge">🏆 Melhor oferta</span>{% endif %}
     <div class="thumb-wrap">
       {% if l.image_url %}
-        <img src="{{ l.image_url }}" alt="" loading="lazy">
+        <img src="{{ l.image_url }}" alt="" loading="lazy"
+             onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+        {{ img_placeholder(32) }}
       {% else %}
-        <div class="no-photo">📦</div>
+        {{ img_placeholder(32) }}
       {% endif %}
     </div>
     <div class="info">
       <span class="site-badge site-{{ l.site }}">{{ l.site }}</span>
       <p class="title">{{ l.title }}</p>
-      {% if l.seller %}<p class="seller">vendedor: {{ l.seller }}</p>{% endif %}
+      {% if l.seller %}<p class="seller">Vendedor: {{ l.seller }}</p>{% endif %}
     </div>
     <div class="price-col">
       <span class="price">R$ {{ "%.2f"|format(l.current_price) }}</span>
@@ -34,4 +80,160 @@
   {% endfor %}
 </div>
 {% endif %}
+
+<!-- Gráfico de Histórico de Preços -->
+<div class="chart-section">
+  <div class="chart-header">
+    <h2>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      Histórico de Preços
+    </h2>
+    <div class="period-filters" id="periodFilters" role="group" aria-label="Filtrar período">
+      <button class="period-btn" data-days="7">7d</button>
+      <button class="period-btn" data-days="30">30d</button>
+      <button class="period-btn" data-days="90">90d</button>
+      <button class="period-btn active" data-days="0">Tudo</button>
+    </div>
+  </div>
+  <div class="chart-wrap" id="chartWrap">
+    <canvas id="priceChart"></canvas>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script src="https://cdn.jsdelivr.net/npm/luxon@3"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1"></script>
+<script type="application/json" id="historyData">
+  {{ history_json | safe }}
+</script>
+<script>
+(function () {
+  // Hide fallback placeholders initially, unless already hidden by onerror
+  document.querySelectorAll('.thumb-wrap .no-photo, .product-hero-img .no-photo').forEach(function(el) {
+    var img = el.previousElementSibling;
+    if (img && img.tagName === 'IMG') {
+      if (img.style.display !== 'none') {
+        el.style.display = 'none';
+      }
+    }
+  });
+
+  var rawSeries = JSON.parse(document.getElementById('historyData').textContent);
+  var palette   = ['#6c63ff','#4ecdc4','#fb923c','#fbbf24','#f472b6','#34d399','#60a5fa','#a78bfa',
+                   '#ff6b6b','#45b7d1','#98d8c8','#f7dc6f'];
+
+  if (!rawSeries.length) {
+    document.getElementById('chartWrap').innerHTML =
+      '<p class="empty">Sem histórico ainda. Rode o crawler mais vezes para acumular pontos de dados.</p>';
+    document.getElementById('periodFilters').style.display = 'none';
+    return;
+  }
+
+  var chartInstance = null;
+
+  function buildDatasets(days) {
+    var cutoff = days > 0
+      ? new Date(Date.now() - days * 86400000).toISOString()
+      : null;
+
+    return rawSeries.map(function(s, i) {
+      var data = cutoff
+        ? s.data.filter(function(pt) { return pt.x >= cutoff; })
+        : s.data;
+      return {
+        label:           s.label,
+        data:            data,
+        borderColor:     palette[i % palette.length],
+        backgroundColor: palette[i % palette.length] + '20',
+        borderWidth:     2.5,
+        tension:         0.35,
+        pointRadius:     data.length <= 10 ? 4 : 2,
+        pointHoverRadius:6,
+        fill:            true,
+      };
+    });
+  }
+
+  function getChartColors() {
+    var isLight = document.documentElement.getAttribute('data-theme') === 'light';
+    return {
+      grid:    isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.05)',
+      ticks:   isLight ? '#6b7280'          : '#6b7280',
+      legend:  isLight ? '#4b5563'          : '#9ca3af',
+      tooltip: isLight ? '#ffffff'          : '#1a1d27',
+      ttBorder:isLight ? 'rgba(91,82,232,0.2)' : 'rgba(108,99,255,0.3)',
+      ttTitle: isLight ? '#111827'          : '#e8eaf0',
+      ttBody:  isLight ? '#4b5563'          : '#9ca3af',
+    };
+  }
+
+  function renderChart(days) {
+    var c = getChartColors();
+    if (chartInstance) { chartInstance.destroy(); }
+    chartInstance = new Chart(document.getElementById('priceChart'), {
+      type: 'line',
+      data: { datasets: buildDatasets(days) },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        scales: {
+          x: {
+            type: 'time',
+            time: { unit: days > 0 && days <= 14 ? 'hour' : 'day', tooltipFormat: 'dd/MM HH:mm' },
+            grid:  { color: c.grid },
+            ticks: { color: c.ticks },
+          },
+          y: {
+            beginAtZero: false,
+            grid:  { color: c.grid },
+            ticks: { color: c.ticks, callback: function(v) { return 'R$ ' + Number(v).toFixed(2); } },
+          },
+        },
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels: {
+              color: c.legend,
+              usePointStyle: true,
+              padding: 16,
+              boxWidth: 10,
+              font: { size: 11 },
+            }
+          },
+          tooltip: {
+            backgroundColor: c.tooltip,
+            borderColor:     c.ttBorder,
+            borderWidth:     1,
+            titleColor:      c.ttTitle,
+            bodyColor:       c.ttBody,
+            callbacks: {
+              label: function(ctx) {
+                return ' ' + ctx.dataset.label + ': R$ ' + ctx.parsed.y.toFixed(2);
+              }
+            }
+          }
+        },
+      }
+    });
+  }
+
+  // Period filter buttons
+  var activeDays = 0;
+  document.getElementById('periodFilters').addEventListener('click', function(e) {
+    var btn = e.target.closest('.period-btn');
+    if (!btn) return;
+    document.querySelectorAll('.period-btn').forEach(function(b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+    activeDays = parseInt(btn.dataset.days, 10);
+    renderChart(activeDays);
+  });
+
+  // Re-render on theme change so colors update
+  var observer = new MutationObserver(function() { renderChart(activeDays); });
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+  renderChart(0);
+})();
+</script>
 {% endblock %}

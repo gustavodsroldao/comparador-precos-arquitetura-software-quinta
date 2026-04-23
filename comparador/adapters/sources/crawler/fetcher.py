@@ -64,6 +64,7 @@ class RateLimitedFetcher:
 
     async def _get_context(self, domain: str) -> BrowserContext:
         if domain not in self._contexts:
+            assert self._browser is not None
             ua = random_user_agent()
             ctx = await self._browser.new_context(
                 user_agent=ua,

@@ -24,7 +24,7 @@ class CrawlerSource(PriceSource):
     name = "crawler"
 
     def __init__(self, fetcher: RateLimitedFetcher, site_names: list[str]) -> None:
-        self._scrapers = [SITES[n](fetcher) for n in site_names if n in SITES]
+        self._scrapers = [SITES[n](fetcher) for n in site_names if n in SITES]  # type: ignore
 
     async def search(
         self, query: ProductQuery, max_results: int = 5

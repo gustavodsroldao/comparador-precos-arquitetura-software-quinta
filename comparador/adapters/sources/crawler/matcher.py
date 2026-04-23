@@ -12,6 +12,24 @@ _FEATURE_PATTERNS = [
     r"\b(20\d{2})\b",
 ]
 
+# Tokens que indicam acessório — se o candidato contém qualquer um destes
+# e a query não, aplica penalidade pesada.
+_ACCESSORY_TOKENS = {
+    "capa", "capinha", "case", "cabo", "carregador", "pelicula", "peliculas",
+    "suporte", "holder", "adaptador", "hub", "dock", "capa protetora",
+    "protetor", "protetora", "anel", "pop socket", "popsocket", "skin",
+    "adesivo", "sticker", "bumper", "silicone", "tpu", "magnético", "magnetico",
+    "estojo", "bolsa", "mochila", "suporte veicular", "veicular",
+    "fone", "fones", "earphone", "headphone", "audifonos",
+    "bateria externa", "powerbank", "power bank",
+    "cabo usb", "cabo tipo", "cabo lightning", "cabo hdmi",
+    "mouse", "teclado", "webcam",
+}
+
+_ACCESSORY_PATTERN = re.compile(
+    r"\b(" + "|".join(re.escape(t) for t in sorted(_ACCESSORY_TOKENS, key=len, reverse=True)) + r")\b"
+)
+
 
 def normalize(text: str) -> str:
     text = unidecode(text or "").lower()
@@ -28,8 +46,16 @@ def extract_features(text: str) -> set[str]:
     return feats
 
 
+def _has_accessory_token(text: str) -> bool:
+    return bool(_ACCESSORY_PATTERN.search(normalize(text)))
+
+
 def score_match(query: str, candidate: str) -> float:
-    """0–100 similarity: fuzzy token overlap + numeric feature overlap."""
+    """0–100 similarity: fuzzy token overlap + numeric feature overlap.
+    
+    Applies a heavy penalty when the candidate looks like an accessory
+    (case, cable, charger…) but the query does not mention one.
+    """
     nq, nc = normalize(query), normalize(candidate)
     if not nq or not nc:
         return 0.0
@@ -45,6 +71,10 @@ def score_match(query: str, candidate: str) -> float:
         bonus = overlap_frac * 15
         penalty = 8 if (q_feats - c_feats) else 0
         base = base + bonus - penalty
+
+    # Accessory penalty: candidate looks like an accessory but query doesn't
+    if _has_accessory_token(candidate) and not _has_accessory_token(query):
+        base = 0.0
 
     return max(0.0, min(100.0, base))
 

@@ -4,22 +4,101 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}Comparador de Preços{% endblock %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/app.css">
+<!-- Anti-flash: apply saved theme before render -->
+<script>
+(function () {
+  var saved = localStorage.getItem('pw-theme');
+  if (saved === 'light') {
+    document.documentElement.setAttribute('data-theme', 'light');
+  } else if (!saved && window.matchMedia('(prefers-color-scheme: light)').matches) {
+    document.documentElement.setAttribute('data-theme', 'light');
+  }
+})();
+</script>
 </head>
 <body>
-<header>
-  <a href="/public/" class="logo">Comparador de Preços</a>
+<header class="site-header">
+  <a href="/public/" class="logo">
+    <svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="28" height="28" rx="8" fill="url(#logoGrad)"/>
+      <path d="M7 14l4 4 10-10" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <defs>
+        <linearGradient id="logoGrad" x1="0" y1="0" x2="28" y2="28" gradientUnits="userSpaceOnUse">
+          <stop stop-color="#6c63ff"/>
+          <stop offset="1" stop-color="#4ecdc4"/>
+        </linearGradient>
+      </defs>
+    </svg>
+    <span>PriceWatch</span>
+  </a>
+
+  {% block navbar_center %}
+  <div class="header-center"></div>
+  {% endblock %}
+
   <nav class="topnav">
+    <!-- Theme toggle -->
+    <button class="theme-toggle" id="themeToggle" aria-label="Alternar tema" title="Alternar dark/light">
+      <svg id="iconMoon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+      </svg>
+      <svg id="iconSun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none">
+        <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+      </svg>
+    </button>
+
     {% if is_admin %}
-      <a href="/admin/">Admin</a>
-      <a href="/admin/logout" class="logout">Sair</a>
+      <a href="/admin/" class="nav-link">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+        Admin
+      </a>
+      <a href="/admin/logout" class="nav-link logout">Sair</a>
     {% else %}
-      <a href="/admin/login">Entrar</a>
+      <a href="/admin/login" class="nav-link">Entrar</a>
     {% endif %}
   </nav>
 </header>
 <main>
 {% block content %}{% endblock %}
 </main>
+<footer class="site-footer">
+  <p>© 2025 PriceWatch — Comparador de Preços</p>
+</footer>
+
+<script>
+// Theme toggle logic
+(function () {
+  var btn     = document.getElementById('themeToggle');
+  var iconMoon = document.getElementById('iconMoon');
+  var iconSun  = document.getElementById('iconSun');
+
+  function applyTheme(theme) {
+    if (theme === 'light') {
+      document.documentElement.setAttribute('data-theme', 'light');
+      iconMoon.style.display = 'none';
+      iconSun.style.display  = '';
+    } else {
+      document.documentElement.removeAttribute('data-theme');
+      iconMoon.style.display = '';
+      iconSun.style.display  = 'none';
+    }
+  }
+
+  // Init icon state
+  var current = localStorage.getItem('pw-theme') ||
+    (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+  applyTheme(current);
+
+  btn.addEventListener('click', function () {
+    var next = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+    localStorage.setItem('pw-theme', next);
+    applyTheme(next);
+  });
+})();
+</script>
 </body>
 </html>

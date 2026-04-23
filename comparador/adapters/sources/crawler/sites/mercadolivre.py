@@ -41,13 +41,15 @@ class MercadoLivreScraper(BaseScraper):
             )
             if not a:
                 continue
-            href = a.get("href", "")
+            href_val = a.get("href") or ""
+            href = str(href_val[0]) if isinstance(href_val, list) else str(href_val)
             title_el = (
                 item.select_one("h2")
                 or item.select_one(".poly-component__title")
                 or a
             )
-            title = title_el.get_text(strip=True) or a.get("title", "")
+            title_val = title_el.get_text(strip=True) or a.get("title") or ""
+            title = str(title_val[0]) if isinstance(title_val, list) else str(title_val)
             if not title or not href:
                 continue
 

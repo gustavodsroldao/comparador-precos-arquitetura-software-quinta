@@ -232,21 +232,35 @@ class SqliteProductRepository(ProductRepository):
     def get_price_history(
         self, product_id: UUID
     ) -> dict[str, list[dict]]:
+        """Returns price history with ONE series per marketplace site.
+
+        Aggregates MIN(price) per site per fetched_at timestamp — avoids
+        clutter from multiple listings with the same value. Label is just
+        the site display name (e.g. "Mercado Livre", "Amazon", "Magazine Luíza").
+        """
+        _SITE_DISPLAY = {
+            "mercadolivre": "Mercado Livre",
+            "amazon": "Amazon",
+            "magalu": "Magazine Luíza",
+        }
+        # Group by site + timestamp, keep only the cheapest price each moment
         sql = """
-        SELECT l.id AS listing_id, l.site, l.site_id,
-               ps.price, ps.fetched_at
+        SELECT l.site,
+               ps.fetched_at,
+               MIN(ps.price) AS price
         FROM listings l
         JOIN price_snapshots ps ON ps.listing_id = l.id
         WHERE l.product_id = ?
           AND l.link_status IN ('auto', 'confirmed')
           AND ps.price IS NOT NULL
-        ORDER BY ps.fetched_at
+        GROUP BY l.site, ps.fetched_at
+        ORDER BY l.site, ps.fetched_at
         """
         out: dict[str, list[dict]] = {}
         with self._conn() as conn:
             for r in conn.execute(sql, (str(product_id),)).fetchall():
-                key = f"{r['site']}:{r['site_id']}"
-                out.setdefault(key, []).append(
+                label = _SITE_DISPLAY.get(r['site'], r['site'].title())
+                out.setdefault(label, []).append(
                     {"x": r["fetched_at"], "y": r["price"]}
                 )
         return out
@@ -291,26 +305,44 @@ class SqliteProductRepository(ProductRepository):
     def get_listings_for_comparison(
         self, product_id: UUID
     ) -> list[dict]:
-        """Only auto/confirmed listings with a current price, cheapest first."""
+        """Only auto/confirmed listings with a current price, cheapest first.
+        
+        Price sanity filter: listings whose price is less than 3% of the median
+        price of all qualifying listings for the same product are excluded —
+        they are likely accessories or scraping errors.
+        """
         sql = """
         WITH latest AS (
             SELECT listing_id, MAX(fetched_at) AS max_at
             FROM price_snapshots
             GROUP BY listing_id
+        ),
+        candidates AS (
+            SELECT l.id, l.site, l.site_id, l.title, l.url, l.seller,
+                   l.image_url, l.match_score,
+                   ps.price AS current_price,
+                   ps.original_price,
+                   ps.fetched_at AS last_fetched_at
+            FROM listings l
+            JOIN latest lt ON lt.listing_id = l.id
+            JOIN price_snapshots ps
+                 ON ps.listing_id = l.id AND ps.fetched_at = lt.max_at
+            WHERE l.product_id = ?
+              AND l.link_status IN ('auto', 'confirmed')
+              AND ps.price IS NOT NULL
+        ),
+        median_price AS (
+            -- SQLite has no MEDIAN; approximate with middle row
+            SELECT current_price AS med
+            FROM candidates
+            ORDER BY current_price
+            LIMIT 1
+            OFFSET (SELECT COUNT(*) FROM candidates) / 2
         )
-        SELECT l.id, l.site, l.site_id, l.title, l.url, l.seller, l.image_url,
-               l.match_score,
-               ps.price AS current_price,
-               ps.original_price,
-               ps.fetched_at AS last_fetched_at
-        FROM listings l
-        JOIN latest lt ON lt.listing_id = l.id
-        JOIN price_snapshots ps
-             ON ps.listing_id = l.id AND ps.fetched_at = lt.max_at
-        WHERE l.product_id = ?
-          AND l.link_status IN ('auto', 'confirmed')
-          AND ps.price IS NOT NULL
-        ORDER BY ps.price ASC
+        SELECT c.*
+        FROM candidates c, median_price m
+        WHERE c.current_price >= m.med * 0.03
+        ORDER BY c.current_price ASC
         """
         with self._conn() as conn:
             return [

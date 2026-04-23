@@ -34,7 +34,9 @@ class AmazonScraper(BaseScraper):
         for item in items:
             if len(results) >= max_results:
                 break
-            asin = (item.get("data-asin") or "").strip()
+            asin_val = item.get("data-asin") or ""
+            asin = str(asin_val[0]) if isinstance(asin_val, list) else str(asin_val)
+            asin = asin.strip()
             if not asin:
                 continue
             link_el = item.select_one("h2 a, a.a-link-normal.s-no-outline")
@@ -44,7 +46,8 @@ class AmazonScraper(BaseScraper):
             if not link_el or not title_el:
                 continue
 
-            href = link_el.get("href", "")
+            href_val = link_el.get("href") or ""
+            href = str(href_val[0]) if isinstance(href_val, list) else str(href_val)
             if href.startswith("/"):
                 href = self.BASE + href
 
@@ -68,7 +71,9 @@ class AmazonScraper(BaseScraper):
         img = item.select_one("img.s-image")
         if not img:
             img = item.select_one("img")
-        return img.get("src") if img else None
+        if not img:
+            return None
+        return img.get("data-src") or img.get("src")
 
     @staticmethod
     def _extract_price(item) -> float | None:

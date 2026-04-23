@@ -60,10 +60,19 @@ def public_product(request: Request, product_id: str):
     if not product:
         raise HTTPException(status_code=404, detail="product not found")
     listings = repo.get_listings_for_comparison(pid)
+    history = repo.get_price_history(pid)
+    history_series = [
+        {"label": k, "data": v} for k, v in history.items()
+    ]
     return TEMPLATES.TemplateResponse(
         request,
         "public/product.html",
-        _ctx(request, product=product, listings=listings),
+        _ctx(
+            request,
+            product=product,
+            listings=listings,
+            history_json=json.dumps(history_series).replace("</", "<\\/"),
+        ),
     )
 
 
