@@ -1,12 +1,13 @@
-{% extends "base.html" %} {% block title %}{{ product.display_name }} — Admin{% endblock %} 
+{% extends "base.html" %} {% block title %}{{ product.display_name }} — Admin{% endblock %}
 
 {% macro img_placeholder(size=48) %}
 <div class="no-photo" style="height: 160px;">
   <svg width="{{ size }}" height="{{ size }}" viewBox="0 0 48 48" fill="none">
-    <rect width="48" height="48" rx="8" fill="currentColor" fill-opacity="0.08"/>
-    <path d="M14 34V22a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H16a2 2 0 0 1-2-2z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
-    <path d="M20 20v-2a4 4 0 0 1 8 0v2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-    <circle cx="24" cy="28" r="2" fill="currentColor"/>
+    <rect width="48" height="48" rx="8" fill="currentColor" fill-opacity="0.08" />
+    <path d="M14 34V22a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H16a2 2 0 0 1-2-2z" stroke="currentColor"
+      stroke-width="1.5" stroke-linejoin="round" />
+    <path d="M20 20v-2a4 4 0 0 1 8 0v2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+    <circle cx="24" cy="28" r="2" fill="currentColor" />
   </svg>
 </div>
 {% endmacro %}
@@ -31,8 +32,8 @@
       <span class="status status-{{ l.link_status }}">{{ l.link_status }}</span>
     </header>
     {% if l.image_url %}
-    <img class="thumb" src="{{ l.image_url }}" alt="" loading="lazy" 
-         onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" />
+    <img class="thumb" src="{{ l.image_url }}" alt="" loading="lazy"
+      onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" />
     {{ img_placeholder(40) }}
     {% else %}
     {{ img_placeholder(40) }}
@@ -112,7 +113,7 @@
 <script>
   (function () {
     // Hide fallback placeholders initially, unless already hidden by onerror
-    document.querySelectorAll('.listing-card .no-photo').forEach(function(el) {
+    document.querySelectorAll('.listing-card .no-photo').forEach(function (el) {
       var img = el.previousElementSibling;
       if (img && img.tagName === 'IMG') {
         if (img.style.display !== 'none') {
@@ -121,8 +122,33 @@
       }
     });
 
+    // rawSeries already contains the "Menor Preço" series directly from the backend
     var rawSeries = JSON.parse(document.getElementById('historyData').textContent);
-    var palette   = ['#6c63ff','#4ecdc4','#fb923c','#fbbf24','#f472b6','#34d399','#60a5fa','#a78bfa'];
+
+    var minPrices = {};
+    rawSeries.forEach(function(series) {
+      series.data.forEach(function(pt) {
+        var day = pt.x.substring(0, 10) + 'T12:00:00.000Z';
+        if (!minPrices[day] || pt.y < minPrices[day]) {
+          minPrices[day] = pt.y;
+          minPrices[day + '_site'] = pt.site || series.label;
+        }
+      });
+    });
+    
+    var consolidatedData = Object.keys(minPrices)
+      .filter(function(k) { return !k.endsWith('_site'); })
+      .sort()
+      .map(function(dateStr) {
+        return { x: dateStr, y: minPrices[dateStr], site: minPrices[dateStr + '_site'] };
+      });
+
+    rawSeries = consolidatedData.length > 0 ? [{
+      label: 'Menor Preço',
+      data: consolidatedData
+    }] : [];
+
+    var palette = ['#6c63ff', '#4ecdc4', '#fb923c', '#fbbf24', '#f472b6', '#34d399', '#60a5fa', '#a78bfa'];
     var chartInstance = null;
     var activeDays = 0;
 
@@ -135,25 +161,45 @@
 
     function buildDatasets(days) {
       var cutoff = days > 0 ? new Date(Date.now() - days * 86400000).toISOString() : null;
-      return rawSeries.map(function(s, i) {
-        var data = cutoff ? s.data.filter(function(pt) { return pt.x >= cutoff; }) : s.data;
+      return rawSeries.map(function (s, i) {
+        var data = cutoff ? s.data.filter(function (pt) { return pt.x >= cutoff; }) : s.data;
         return {
-          label:           s.label,
-          data:            data,
-          borderColor:     palette[i % palette.length],
-          backgroundColor: palette[i % palette.length] + '20',
-          borderWidth:     2,
-          tension:         0.3,
-          pointRadius:     3,
-          fill:            true,
+          label: s.label,
+          data: data,
+          borderColor: '#00c4b4',
+          backgroundColor: function(context) {
+            const chart = context.chart;
+            const {ctx, chartArea} = chart;
+            if (!chartArea) {
+              return null;
+            }
+            const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+            gradient.addColorStop(0, 'rgba(0, 196, 180, 0.4)');
+            gradient.addColorStop(1, 'rgba(0, 196, 180, 0.0)');
+            return gradient;
+          },
+          borderWidth: 2.5,
+          tension: 0,
+          pointRadius: function (ctx) {
+            return ctx.dataIndex === ctx.dataset.data.length - 1 ? 8 : 0;
+          },
+          pointHoverRadius: 10,
+          pointBackgroundColor: function (ctx) {
+            return ctx.dataIndex === ctx.dataset.data.length - 1 ? '#563d7c' : '#ffffff';
+          },
+          pointBorderColor: function (ctx) {
+            return ctx.dataIndex === ctx.dataset.data.length - 1 ? '#ffffff' : '#00c4b4';
+          },
+          pointBorderWidth: 2,
+          fill: true,
         };
       });
     }
 
     function renderChart(days) {
       var isLight = document.documentElement.getAttribute('data-theme') === 'light';
-      var gridColor  = isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.05)';
-      var tickColor  = '#6b7280';
+      var gridColor = isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.05)';
+      var tickColor = '#6b7280';
       if (chartInstance) chartInstance.destroy();
       chartInstance = new Chart(document.getElementById('priceChart'), {
         type: 'line',
@@ -166,13 +212,13 @@
             x: {
               type: 'time',
               time: { unit: 'day', tooltipFormat: 'dd/MM HH:mm' },
-              grid:  { color: gridColor },
+              grid: { color: gridColor },
               ticks: { color: tickColor },
             },
             y: {
               beginAtZero: false,
               grid: { color: gridColor },
-              ticks: { color: tickColor, callback: function(v) { return 'R$ ' + Number(v).toFixed(2); } }
+              ticks: { color: tickColor, callback: function (v) { return 'R$ ' + Number(v).toFixed(2); } }
             },
           },
           plugins: {
@@ -184,25 +230,37 @@
               backgroundColor: isLight ? '#fff' : '#1a1d27',
               borderColor: 'rgba(108,99,255,0.3)',
               borderWidth: 1,
-              titleColor: isLight ? '#111827' : '#e8eaf0',
+              titleColor: '#563d7c',
+              titleFont: { size: 16, weight: 'bold' },
               bodyColor: '#9ca3af',
-              callbacks: { label: function(ctx) { return ' ' + ctx.dataset.label + ': R$ ' + ctx.parsed.y.toFixed(2); } }
+              displayColors: false,
+              callbacks: {
+                title: function (ctx) {
+                  return 'R$ ' + ctx[0].parsed.y.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                },
+                label: function (ctx) {
+                  const isLast = ctx.dataIndex === ctx.dataset.data.length - 1;
+                  const site = ctx.raw.site ? ctx.raw.site.toUpperCase() : '';
+                  const timeText = isLast ? 'AGORA' : new Date(ctx.parsed.x).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }).replace('.', '');
+                  return timeText + (site ? ' • ' + site : '');
+                }
+              }
             }
           },
         }
       });
     }
 
-    document.getElementById('periodFilters').addEventListener('click', function(e) {
+    document.getElementById('periodFilters').addEventListener('click', function (e) {
       var btn = e.target.closest('.period-btn');
       if (!btn) return;
-      document.querySelectorAll('.period-btn').forEach(function(b) { b.classList.remove('active'); });
+      document.querySelectorAll('.period-btn').forEach(function (b) { b.classList.remove('active'); });
       btn.classList.add('active');
       activeDays = parseInt(btn.dataset.days, 10);
       renderChart(activeDays);
     });
 
-    var obs = new MutationObserver(function() { renderChart(activeDays); });
+    var obs = new MutationObserver(function () { renderChart(activeDays); });
     obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
     renderChart(0);

@@ -232,36 +232,26 @@ class SqliteProductRepository(ProductRepository):
     def get_price_history(
         self, product_id: UUID
     ) -> dict[str, list[dict]]:
-        """Returns price history with ONE series per marketplace site.
-
-        Aggregates MIN(price) per site per fetched_at timestamp — avoids
-        clutter from multiple listings with the same value. Label is just
-        the site display name (e.g. "Mercado Livre", "Amazon", "Magazine Luíza").
+        """Returns price history as a single series representing the lowest price overall per day.
+        Matches the zoom.com.br single-line visual pattern.
         """
-        _SITE_DISPLAY = {
-            "mercadolivre": "Mercado Livre",
-            "amazon": "Amazon",
-            "magalu": "Magazine Luíza",
-        }
-        # Group by site + timestamp, keep only the cheapest price each moment
         sql = """
-        SELECT l.site,
-               ps.fetched_at,
-               MIN(ps.price) AS price
+        SELECT substr(ps.fetched_at, 1, 10) || 'T12:00:00' AS fetch_date,
+               MIN(ps.price) AS price,
+               l.site AS site
         FROM listings l
         JOIN price_snapshots ps ON ps.listing_id = l.id
         WHERE l.product_id = ?
           AND l.link_status IN ('auto', 'confirmed')
           AND ps.price IS NOT NULL
-        GROUP BY l.site, ps.fetched_at
-        ORDER BY l.site, ps.fetched_at
+        GROUP BY substr(ps.fetched_at, 1, 10)
+        ORDER BY fetch_date
         """
-        out: dict[str, list[dict]] = {}
+        out: dict[str, list[dict]] = {"Menor Preço": []}
         with self._conn() as conn:
             for r in conn.execute(sql, (str(product_id),)).fetchall():
-                label = _SITE_DISPLAY.get(r['site'], r['site'].title())
-                out.setdefault(label, []).append(
-                    {"x": r["fetched_at"], "y": r["price"]}
+                out["Menor Preço"].append(
+                    {"x": r["fetch_date"], "y": r["price"], "site": r["site"]}
                 )
         return out
 
